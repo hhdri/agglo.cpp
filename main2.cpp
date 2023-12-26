@@ -2,19 +2,46 @@
 #include <fstream>
 #include <sstream>
 #include <chrono>
+#include <set>
 
 #include <faiss/IndexFlat.h>
+#include <algorithm>
 
 using std::string, std::cout, std::endl;
 
-const int VOCAB_SIZE = 400'000;
 const int EMBEDDING_DIM = 50;
+const int VOCAB_SIZE = 50'000;
 static float embeddings[VOCAB_SIZE * EMBEDDING_DIM];
 static string vocab[VOCAB_SIZE];
 
 struct Partition {
     string path;
     int size;
+};
+
+class Cluster {
+public:
+    std::set<int> objects;
+    float embedding[EMBEDDING_DIM];
+
+    Cluster(std::set<int> objects) : objects(std::move(objects)) {
+        auto clusterSize = (float) this->objects.size();
+        for (float &i: embedding) {
+            i = 0.0;
+        }
+        for (int object: this->objects) {
+            for (int i = 0; i < EMBEDDING_DIM; i++) {
+                embedding[i] += embeddings[object * EMBEDDING_DIM + i] / clusterSize;
+            }
+        }
+    }
+};
+
+class ClusterPair {
+public:
+    int cluster1Id;
+    int cluster2Id;
+    double similarity;
 };
 
 void loadPartition(const Partition &partition, int offset) {
@@ -42,38 +69,111 @@ void loadPartition(const Partition &partition, int offset) {
 }
 
 void
-searchFaiss(float* embeddingss, float* searchDistances, faiss::idx_t* searchIndices, int embeddingDim, int vocabSize,
-            int searchSize, int k) {
-    faiss::IndexFlatIP index(embeddingDim);
-    index.add(vocabSize, embeddingss);
-    index.search(searchSize, embeddingss, k, searchDistances, searchIndices);
+searchFaiss(float *clusterEmbeddings, float *searchDistances, faiss::idx_t *searchIndices, faiss::idx_t vocabSize,
+            int searchK) {
+    faiss::IndexFlatIP index(EMBEDDING_DIM);
+    index.add(vocabSize, clusterEmbeddings);
+    index.search(vocabSize, clusterEmbeddings, searchK, searchDistances, searchIndices);
+}
+
+void mergeClusters(std::vector<Cluster> *clusters, std::vector<Cluster> *newClusters, int searchK) {
+    unsigned long sumSizes = 0;
+    for (const Cluster &cluster: *clusters) {
+        sumSizes += cluster.objects.size();
+    }
+    cout << "Sum sizes: " << sumSizes << endl;
+
+    unsigned long num_clusters = clusters->size();
+    auto *clusterEmbeddings = new float[num_clusters * EMBEDDING_DIM];
+    for (int i = 0; i < num_clusters; i++) {
+        std::copy(clusters->at(i).embedding, clusters->at(i).embedding + EMBEDDING_DIM,
+                  clusterEmbeddings + i * EMBEDDING_DIM);
+    }
+
+    auto *searchIndices = new faiss::idx_t[num_clusters * searchK];
+    auto *searchDistances = new float[num_clusters * searchK];
+
+    searchFaiss(clusterEmbeddings, searchDistances, searchIndices, (faiss::idx_t) num_clusters, searchK);
+
+    std::vector<ClusterPair> clusterPairs;
+    for (int i = 0; i < num_clusters; i++) {
+        for (int j = 0; j < searchK; j++) {
+            int cluster1Id = i;
+            int cluster2Id = (int) searchIndices[i * searchK + j];
+            if (searchDistances[i * searchK + j] > 0.9 & cluster1Id < cluster2Id) {
+                clusterPairs.emplace_back(ClusterPair{cluster1Id, cluster2Id, searchDistances[i * searchK + j]});
+            }
+        }
+    }
+    std::sort(clusterPairs.begin(), clusterPairs.end(),
+              [](const ClusterPair &a, const ClusterPair &b) { return a.similarity > b.similarity; });
+
+    std::vector<bool> isClusterUsed(num_clusters, false);
+
+    int numMerged = 0;
+    for (const ClusterPair &clusterPair: clusterPairs) {
+        if (isClusterUsed[clusterPair.cluster1Id] || isClusterUsed[clusterPair.cluster2Id]) {
+            continue;
+        }
+        isClusterUsed[clusterPair.cluster1Id] = true;
+        isClusterUsed[clusterPair.cluster2Id] = true;
+        std::set<int> objects;
+        objects.insert(clusters->at(clusterPair.cluster1Id).objects.begin(),
+                       clusters->at(clusterPair.cluster1Id).objects.end());
+        objects.insert(clusters->at(clusterPair.cluster2Id).objects.begin(),
+                       clusters->at(clusterPair.cluster2Id).objects.end());
+        newClusters->emplace_back(objects);
+        numMerged++;
+    }
+    int numNotMerged = 0;
+    for (int i = 0; i < num_clusters; i++) {
+        if (!isClusterUsed[i]) {
+            newClusters->emplace_back(clusters->at(i).objects);
+            numNotMerged++;
+        }
+    }
+
+    cout << "Num clusters: " << newClusters->size() << " (" << numMerged << " merged, " << numNotMerged << " not merged)"
+         << endl;
 }
 
 int main() {
-    loadPartition({"/Users/majid/Downloads/glove.6B/glove.6B.50d.txt", 400'000}, 0);
+    const int searchK = 10;
 
-    auto start = std::chrono::high_resolution_clock::now();
+    loadPartition({"/Users/majid/Downloads/glove.6B/glove.6B.50d/glove.6B.50d.aa", 50'000}, 0);
 
-    const int SEARCH_SIZE = 400'000;
-    const int K = 2;
-    auto *searchIndices = new faiss::idx_t[SEARCH_SIZE * K];
-    auto *searchDistances = new float[SEARCH_SIZE * K];
+    std::vector<Cluster> clusters, newClusters;
+    for (int i = 0; i < VOCAB_SIZE; i++) {
+        std::set<int> objects;
+        objects.insert(i);
+        clusters.emplace_back(objects);
+    }
+    mergeClusters(&clusters, &newClusters, searchK);
 
-    searchFaiss(embeddings, searchDistances, searchIndices, EMBEDDING_DIM, VOCAB_SIZE, SEARCH_SIZE, K);
+    for (int i = 0;; i++){
+        cout << "Iteration " << i << endl;
+        if (newClusters.size() == clusters.size()) {
+            break;
+        }
+        clusters = newClusters;
+        newClusters.clear();
+        mergeClusters(&clusters, &newClusters, searchK);
+    }
 
-    auto end = std::chrono::high_resolution_clock::now();
+    // Sort clusters based on size
+    std::sort(newClusters.begin(), newClusters.end(),
+              [](const Cluster &a, const Cluster &b) { return a.objects.size() > b.objects.size(); });
 
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-    cout << "Duration: " << duration << "ms" << endl;
+    std::vector<std::vector<string>> clusterObjects;
 
-    // Duration: 14618ms
-
-//    for (int i = 0; i < SEARCH_SIZE; i++) {
-//        cout << vocab[i] << endl;
-//        for (int j = 0; j < K; j++) {
-//            cout << "\t" << vocab[searchIndices[i * K + j]] << " " << searchDistances[i * K + j] << endl;
-//        }
-//    }
+    for (const Cluster &cluster: newClusters) {
+        std::vector<string> objects;
+        objects.reserve(cluster.objects.size());
+        for (int object: cluster.objects) {
+            objects.push_back(vocab[object]);
+        }
+        clusterObjects.push_back(objects);
+    }
 
     cout << "Done" << endl;
 }
