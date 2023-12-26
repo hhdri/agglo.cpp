@@ -7,6 +7,8 @@ add_executable(untitled2 main2.cpp)
 
 include_directories(/usr/local/include)
 
+set(CMAKE_CXX_FLAGS "-O3 -march=native")
+
 # Find and link OpenMP
 find_package(OpenMP REQUIRED)
 if(OpenMP_CXX_FOUND)

@@ -41,20 +41,25 @@ void loadPartition(const Partition &partition, int offset) {
     file.close();
 }
 
+void
+searchFaiss(float* embeddingss, float* searchDistances, faiss::idx_t* searchIndices, int embeddingDim, int vocabSize,
+            int searchSize, int k) {
+    faiss::IndexFlatIP index(embeddingDim);
+    index.add(vocabSize, embeddingss);
+    index.search(searchSize, embeddingss, k, searchDistances, searchIndices);
+}
+
 int main() {
     loadPartition({"/Users/majid/Downloads/glove.6B/glove.6B.50d.txt", 400'000}, 0);
 
     auto start = std::chrono::high_resolution_clock::now();
 
-    faiss::IndexFlatIP index(EMBEDDING_DIM);
-    index.add(VOCAB_SIZE, embeddings);
+    const int SEARCH_SIZE = 400'000;
+    const int K = 2;
+    auto *searchIndices = new faiss::idx_t[SEARCH_SIZE * K];
+    auto *searchDistances = new float[SEARCH_SIZE * K];
 
-    const int SEARCH_SIZE = 50'000;
-
-    auto *searchIndices = new long long[SEARCH_SIZE * 5];
-    auto *searchDistances = new float[SEARCH_SIZE * 5];
-
-    index.search(SEARCH_SIZE, embeddings, 5, searchDistances, searchIndices);
+    searchFaiss(embeddings, searchDistances, searchIndices, EMBEDDING_DIM, VOCAB_SIZE, SEARCH_SIZE, K);
 
     auto end = std::chrono::high_resolution_clock::now();
 
@@ -65,8 +70,8 @@ int main() {
 
 //    for (int i = 0; i < SEARCH_SIZE; i++) {
 //        cout << vocab[i] << endl;
-//        for (int j = 0; j < 5; j++) {
-//            cout << "\t" << vocab[searchIndices[i * 5 + j]] << " " << searchDistances[i * 5 + j] << endl;
+//        for (int j = 0; j < K; j++) {
+//            cout << "\t" << vocab[searchIndices[i * K + j]] << " " << searchDistances[i * K + j] << endl;
 //        }
 //    }
 
