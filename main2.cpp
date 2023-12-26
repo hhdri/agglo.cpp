@@ -2,11 +2,8 @@
 #include <fstream>
 #include <sstream>
 #include <chrono>
-#include <vector>
-#include <queue>
-#include <numeric>
-#include <algorithm>
-#include <list>
+
+#include <faiss/IndexFlat.h>
 
 using std::string, std::cout, std::endl;
 
@@ -49,43 +46,29 @@ int main() {
 
     auto start = std::chrono::high_resolution_clock::now();
 
-    const int SEARCH_SIZE = 500;
-    const int K = 5;
+    faiss::IndexFlatIP index(EMBEDDING_DIM);
+    index.add(VOCAB_SIZE, embeddings);
 
-    auto *searchIndices = new long long[SEARCH_SIZE * K];
-    auto *searchDistances = new float[SEARCH_SIZE * K];
+    const int SEARCH_SIZE = 50'000;
 
-    for (int i = 0; i < SEARCH_SIZE; i++) {
-        float InnerSearchSimilarities[VOCAB_SIZE];
-        long long innerSearchIndices[VOCAB_SIZE];
-        std::iota(std::begin(innerSearchIndices), std::end(innerSearchIndices), 0);
-        for (int j = 0; j < VOCAB_SIZE; j++) {
-            InnerSearchSimilarities[j] = 0.0;
-            for (int k = 0; k < EMBEDDING_DIM; k++) {
-                InnerSearchSimilarities[j] += embeddings[i * EMBEDDING_DIM + k] * embeddings[j * EMBEDDING_DIM + k];
-            }
-        }
-        std::sort(std::begin(innerSearchIndices), std::end(innerSearchIndices),
-                  [&](int i, int j) { return InnerSearchSimilarities[i] > InnerSearchSimilarities[j]; });
-        for (int j = 0; j < K; j++) {
-            searchIndices[i * K + j] = innerSearchIndices[j];
-            searchDistances[i * K + j] = InnerSearchSimilarities[innerSearchIndices[j]];
-        }
-    }
+    auto *searchIndices = new long long[SEARCH_SIZE * 5];
+    auto *searchDistances = new float[SEARCH_SIZE * 5];
+
+    index.search(SEARCH_SIZE, embeddings, 5, searchDistances, searchIndices);
 
     auto end = std::chrono::high_resolution_clock::now();
+
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
     cout << "Duration: " << duration << "ms" << endl;
 
-    // Duration: 70613ms
-    // Duration: 58414ms
+    // Duration: 14618ms
 
-    for (int i = 0; i < SEARCH_SIZE; i++) {
-        cout << vocab[i] << endl;
-        for (int j = 0; j < 5; j++) {
-            cout << "\t" << vocab[searchIndices[i * 5 + j]] << " " << searchDistances[i * 5 + j] << endl;
-        }
-    }
+//    for (int i = 0; i < SEARCH_SIZE; i++) {
+//        cout << vocab[i] << endl;
+//        for (int j = 0; j < 5; j++) {
+//            cout << "\t" << vocab[searchIndices[i * 5 + j]] << " " << searchDistances[i * 5 + j] << endl;
+//        }
+//    }
 
     cout << "Done" << endl;
 }
