@@ -49,31 +49,27 @@ int main() {
 
     auto start = std::chrono::high_resolution_clock::now();
 
-    const int SEARCH_SIZE = 5'000;
+    const int SEARCH_SIZE = 500;
     const int K = 5;
 
     auto *searchIndices = new long long[SEARCH_SIZE * K];
     auto *searchDistances = new float[SEARCH_SIZE * K];
 
     for (int i = 0; i < SEARCH_SIZE; i++) {
-        std::priority_queue<std::pair<float, int>, std::vector<std::pair<float, int>>, std::greater<>> pq;
+        float InnerSearchSimilarities[VOCAB_SIZE];
+        long long innerSearchIndices[VOCAB_SIZE];
+        std::iota(std::begin(innerSearchIndices), std::end(innerSearchIndices), 0);
         for (int j = 0; j < VOCAB_SIZE; j++) {
-            float cosineSim = 0.0;
+            InnerSearchSimilarities[j] = 0.0;
             for (int k = 0; k < EMBEDDING_DIM; k++) {
-                cosineSim += embeddings[i * EMBEDDING_DIM + k] * embeddings[j * EMBEDDING_DIM + k];
-            }
-            if (pq.size() < K || cosineSim > pq.top().first) {
-                pq.emplace(cosineSim, j);
-            }
-            if (pq.size() > K) {
-                pq.pop();
+                InnerSearchSimilarities[j] += embeddings[i * EMBEDDING_DIM + k] * embeddings[j * EMBEDDING_DIM + k];
             }
         }
+        std::sort(std::begin(innerSearchIndices), std::end(innerSearchIndices),
+                  [&](int i, int j) { return InnerSearchSimilarities[i] > InnerSearchSimilarities[j]; });
         for (int j = 0; j < K; j++) {
-            auto &pair = pq.top();
-            searchIndices[i * K + K - j - 1] = pair.second;
-            searchDistances[i * K + K - j - 1] = pair.first;
-            pq.pop();
+            searchIndices[i * K + j] = innerSearchIndices[j];
+            searchDistances[i * K + j] = InnerSearchSimilarities[innerSearchIndices[j]];
         }
     }
 
@@ -81,14 +77,15 @@ int main() {
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
     cout << "Duration: " << duration << "ms" << endl;
 
-    // Duration: 28868ms
+    // Duration: 70613ms
+    // Duration: 58414ms
 
-//    for (int i = 0; i < SEARCH_SIZE; i++) {
-//        cout << vocab[i] << endl;
-//        for (int j = 0; j < 5; j++) {
-//            cout << "\t" << vocab[searchIndices[i * 5 + j]] << " " << searchDistances[i * 5 + j] << endl;
-//        }
-//    }
+    for (int i = 0; i < SEARCH_SIZE; i++) {
+        cout << vocab[i] << endl;
+        for (int j = 0; j < 5; j++) {
+            cout << "\t" << vocab[searchIndices[i * 5 + j]] << " " << searchDistances[i * 5 + j] << endl;
+        }
+    }
 
     cout << "Done" << endl;
 }
