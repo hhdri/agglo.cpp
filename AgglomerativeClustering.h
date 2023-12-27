@@ -56,12 +56,27 @@ public:
     vector<Cluster> agglomerativeClustering();
 
 private:
-    void searchFaiss(int size, float *clusterEmbeddings, float *searchDistances, faiss::idx_t *searchIndices) const;
+    class FaissSearchResult {
+    public:
+        float *distances;
+        faiss::idx_t *indices;
 
-    vector<ClusterPair> buildClusterPairs(unsigned long numClusters, const float *searchDistances,
-                                          const faiss::idx_t *searchIndices) const;
+        FaissSearchResult(int size, int searchK) {
+            distances = new float[size * searchK];
+            indices = new faiss::idx_t[size * searchK];
+        }
 
-    float* buildClusterEmbeddings(const vector<Cluster> *clusters) const;
+        ~FaissSearchResult() {
+            delete[] distances;
+            delete[] indices;
+        }
+    };
+
+    FaissSearchResult searchFaiss(int size, float *clusterEmbeddings) const;
+
+    vector<ClusterPair> buildClusterPairs(unsigned long numClusters, const FaissSearchResult *searchResult) const;
+
+    float *buildClusterEmbeddings(const vector<Cluster> *clusters) const;
 
     vector<Cluster> populateNewClusters(const vector<ClusterPair> &clusterPairs, const vector<Cluster> *clusters);
 
@@ -88,24 +103,26 @@ AgglomerativeClustering::AgglomerativeClustering(float *embeddings, int embeddin
         : embeddings(embeddings), embeddingDim(embeddingDim), vocabSize(vocabSize), searchK(searchK),
           threshold(threshold) {}
 
-void
-AgglomerativeClustering::searchFaiss(int size, float *clusterEmbeddings, float *searchDistances,
-                                     faiss::idx_t *searchIndices) const {
+AgglomerativeClustering::FaissSearchResult
+AgglomerativeClustering::searchFaiss(int size, float *clusterEmbeddings) const {
+    AgglomerativeClustering::FaissSearchResult result(size, searchK);
     faiss::IndexFlatIP index(embeddingDim);
     index.add(size, clusterEmbeddings);
-    index.search(size, clusterEmbeddings, searchK, searchDistances, searchIndices);
+    index.search(size, clusterEmbeddings, searchK, result.distances, result.indices);
+    return result;
 }
 
 vector<ClusterPair>
-AgglomerativeClustering::buildClusterPairs(unsigned long numClusters, const float *searchDistances,
-                                           const faiss::idx_t *searchIndices) const {
+AgglomerativeClustering::buildClusterPairs(unsigned long numClusters,
+                                           const AgglomerativeClustering::FaissSearchResult *searchResult) const {
     vector<ClusterPair> clusterPairs;
     for (int i = 0; i < numClusters; i++) {
         for (int j = 0; j < searchK; j++) {
             int cluster1Id = i;
-            int cluster2Id = (int) searchIndices[i * searchK + j];
-            if (searchDistances[i * searchK + j] > threshold & cluster1Id < cluster2Id) {
-                clusterPairs.emplace_back(ClusterPair{cluster1Id, cluster2Id, searchDistances[i * searchK + j]});
+            int cluster2Id = (int) searchResult->indices[i * searchK + j];
+            if (searchResult->distances[i * searchK + j] > threshold & cluster1Id < cluster2Id) {
+                clusterPairs.emplace_back(
+                        ClusterPair{cluster1Id, cluster2Id, searchResult->distances[i * searchK + j]});
             }
         }
     }
@@ -115,7 +132,7 @@ AgglomerativeClustering::buildClusterPairs(unsigned long numClusters, const floa
     return clusterPairs;
 }
 
-float* AgglomerativeClustering::buildClusterEmbeddings(const vector<Cluster> *clusters) const {
+float *AgglomerativeClustering::buildClusterEmbeddings(const vector<Cluster> *clusters) const {
     auto numClusters = clusters->size();
     auto *clusterEmbeddings = new float[numClusters * embeddingDim];
     for (int i = 0; i < numClusters; i++) {
@@ -164,17 +181,12 @@ vector<Cluster> AgglomerativeClustering::populateNewClusters(const vector<Cluste
 
 vector<Cluster> AgglomerativeClustering::mergeClusters(vector<Cluster> *clusters) {
     auto num_clusters = clusters->size();
-//    auto *clusterEmbeddings = new float[num_clusters * embeddingDim];
     auto *clusterEmbeddings = buildClusterEmbeddings(clusters);
 
-    auto *searchIndices = new faiss::idx_t[num_clusters * searchK];
-    auto *searchDistances = new float[num_clusters * searchK];
-    searchFaiss((int) num_clusters, clusterEmbeddings, searchDistances, searchIndices);
+    auto faissSearchResult = searchFaiss((int) num_clusters, clusterEmbeddings);
     delete[] clusterEmbeddings;
 
-    auto clusterPairs = buildClusterPairs(num_clusters, searchDistances, searchIndices);
-    delete[] searchIndices;
-    delete[] searchDistances;
+    auto clusterPairs = buildClusterPairs(num_clusters, &faissSearchResult);
 
     auto newClusters = populateNewClusters(clusterPairs, clusters);
 
