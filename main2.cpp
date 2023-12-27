@@ -42,17 +42,17 @@ void loadPartition(const Partition &partition, int offset, int embeddingDim, flo
 
 int main() {
     const int EMBEDDING_DIM = 50;
-    const int VOCAB_SIZE = 20'000;
+    const int VOCAB_SIZE = 50'000;
     auto *embeddings = new float[VOCAB_SIZE * EMBEDDING_DIM];
     auto *vocab = new string[VOCAB_SIZE];
-    const int searchK = 10;
+    const int searchK = 20;
 
-    loadPartition({"/Users/majid/Downloads/glove.6B/glove.6B.50d/glove.6B.50d.aa", 20'000}, 0, EMBEDDING_DIM,
+    loadPartition({"/Users/majid/Downloads/glove.6B/glove.6B.50d/glove.6B.50d.aa", VOCAB_SIZE}, 0, EMBEDDING_DIM,
                   embeddings, vocab);
 
     std::vector<Cluster> clusters;
-    auto clustering = AgglomerativeClustering(embeddings, EMBEDDING_DIM, VOCAB_SIZE, searchK, 0.95);
-    clusters = clustering.agglomerativeClustering();
+    auto clustering = AgglomerativeClustering(embeddings, EMBEDDING_DIM, VOCAB_SIZE, searchK, 0.6);
+    clusters = clustering.runAlgorithm();
 
     // Sort clusters based on size
     std::sort(clusters.begin(), clusters.end(),
@@ -74,4 +74,7 @@ int main() {
     delete[] vocab;
 
     cout << "Done" << endl;
+
+    // TODO: Cluster size limit
+    // TODO: Search only on clusters who are candidates for merging (if no pairs in this iteration, skip)
 }
