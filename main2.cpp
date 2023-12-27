@@ -2,7 +2,7 @@
 #include <fstream>
 #include <sstream>
 #include <chrono>
-#include <set>
+#include <unordered_set>
 #include <algorithm>
 
 #include <faiss/IndexFlat.h>
@@ -21,10 +21,10 @@ struct Partition {
 
 class Cluster {
 public:
-    std::set<int> objects;
+    std::unordered_set<int> objects;
     float embedding[EMBEDDING_DIM];
 
-    Cluster(std::set<int> objects) : objects(std::move(objects)) {
+    Cluster(std::unordered_set<int> objects) : objects(std::move(objects)) {
         auto clusterSize = (float) this->objects.size();
         for (float &i: embedding) {
             i = 0.0;
@@ -113,7 +113,7 @@ void populateNewClusters(const std::vector<ClusterPair> &clusterPairs, const std
         }
         isClusterUsed[clusterPair.cluster1Id] = true;
         isClusterUsed[clusterPair.cluster2Id] = true;
-        std::set<int> objects;
+        std::unordered_set<int> objects;
         objects.insert(clusters->at(clusterPair.cluster1Id).objects.begin(),
                        clusters->at(clusterPair.cluster1Id).objects.end());
         objects.insert(clusters->at(clusterPair.cluster2Id).objects.begin(),
@@ -155,17 +155,13 @@ void mergeClusters(std::vector<Cluster> *clusters, std::vector<Cluster> *newClus
 
 void buildSingletonClusters(std::vector<Cluster> *clusters) {
     for (int i = 0; i < VOCAB_SIZE; i++) {
-        std::set<int> objects;
+        std::unordered_set<int> objects;
         objects.insert(i);
         clusters->emplace_back(objects);
     }
 }
 
-int main() {
-    const int searchK = 10;
-
-    loadPartition({"/Users/majid/Downloads/glove.6B/glove.6B.50d/glove.6B.50d.aa", 20'000}, 0);
-
+void agglomerativeClustering(int searchK, std::vector<Cluster> *returnClusters) {
     std::vector<Cluster> clusters, newClusters;
     buildSingletonClusters(&clusters);
 
@@ -178,14 +174,24 @@ int main() {
         clusters = newClusters;
         newClusters.clear();
     }
+    *returnClusters = clusters;
+}
+
+int main() {
+    const int searchK = 10;
+
+    loadPartition({"/Users/majid/Downloads/glove.6B/glove.6B.50d/glove.6B.50d.aa", 20'000}, 0);
+
+    std::vector<Cluster> clusters;
+    agglomerativeClustering(searchK, &clusters);
 
     // Sort clusters based on size
-    std::sort(newClusters.begin(), newClusters.end(),
+    std::sort(clusters.begin(), clusters.end(),
               [](const Cluster &a, const Cluster &b) { return a.objects.size() > b.objects.size(); });
 
     std::vector<std::vector<string>> clusterObjects;
 
-    for (const Cluster &cluster: newClusters) {
+    for (const Cluster &cluster: clusters) {
         std::vector<string> objects;
         objects.reserve(cluster.objects.size());
         for (int object: cluster.objects) {
