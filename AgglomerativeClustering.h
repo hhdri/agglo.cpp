@@ -47,8 +47,9 @@ public:
     int embeddingDim;
     faiss::idx_t vocabSize;
     float *embeddings;
+    float threshold;
 
-    AgglomerativeClustering(float *embeddings, int embeddingDim, faiss::idx_t vocabSize, int searchK);
+    AgglomerativeClustering(float *embeddings, int embeddingDim, faiss::idx_t vocabSize, int searchK, float threshold);
 
     std::vector<Cluster> agglomerativeClustering();
 
@@ -83,8 +84,9 @@ Cluster::Cluster(std::unordered_set<int> objects, const float *embeddings, int e
 }
 
 AgglomerativeClustering::AgglomerativeClustering(float *embeddings, int embeddingDim, faiss::idx_t vocabSize,
-                                                 int searchK)
-        : embeddings(embeddings), embeddingDim(embeddingDim), vocabSize(vocabSize), searchK(searchK) {}
+                                                 int searchK, float threshold)
+        : embeddings(embeddings), embeddingDim(embeddingDim), vocabSize(vocabSize), searchK(searchK),
+          threshold(threshold) {}
 
 void
 AgglomerativeClustering::searchFaiss(int size, float *clusterEmbeddings, float *searchDistances,
@@ -101,7 +103,7 @@ void AgglomerativeClustering::buildClusterPairs(unsigned long numClusters, const
         for (int j = 0; j < searchK; j++) {
             int cluster1Id = i;
             int cluster2Id = (int) searchIndices[i * searchK + j];
-            if (searchDistances[i * searchK + j] > 0.95 & cluster1Id < cluster2Id) {
+            if (searchDistances[i * searchK + j] > threshold & cluster1Id < cluster2Id) {
                 clusterPairs.emplace_back(ClusterPair{cluster1Id, cluster2Id, searchDistances[i * searchK + j]});
             }
         }

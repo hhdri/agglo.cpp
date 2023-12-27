@@ -11,17 +11,12 @@
 
 using std::string, std::cout, std::endl;
 
-const int EMBEDDING_DIM = 50;
-const int VOCAB_SIZE = 20'000;
-static float embeddings[VOCAB_SIZE * EMBEDDING_DIM];
-static string vocab[VOCAB_SIZE];
-
 struct Partition {
     string path;
     int size;
 };
 
-void loadPartition(const Partition &partition, int offset) {
+void loadPartition(const Partition &partition, int offset, int embeddingDim, float *embeddings, string *vocab) {
     std::ifstream file(partition.path);
     for (int i = offset; i < offset + partition.size; i++) {
         string line, word;
@@ -31,27 +26,32 @@ void loadPartition(const Partition &partition, int offset) {
         vocab[i] = word;
 
         float normSquared = 0.0;
-        for (int j = 0; j < EMBEDDING_DIM; j++) {
+        for (int j = 0; j < embeddingDim; j++) {
             float value;
             lineStream >> value;
-            embeddings[i * EMBEDDING_DIM + j] = value;
+            embeddings[i * embeddingDim + j] = value;
             normSquared += value * value;
         }
         float norm = sqrt(normSquared);
-        for (int j = 0; j < EMBEDDING_DIM; j++) {
-            embeddings[i * EMBEDDING_DIM + j] /= norm;
+        for (int j = 0; j < embeddingDim; j++) {
+            embeddings[i * embeddingDim + j] /= norm;
         }
     }
     file.close();
 }
 
 int main() {
+    const int EMBEDDING_DIM = 50;
+    const int VOCAB_SIZE = 20'000;
+    static float embeddings[VOCAB_SIZE * EMBEDDING_DIM];
+    static string vocab[VOCAB_SIZE];
     const int searchK = 10;
 
-    loadPartition({"/Users/majid/Downloads/glove.6B/glove.6B.50d/glove.6B.50d.aa", 20'000}, 0);
+    loadPartition({"/Users/majid/Downloads/glove.6B/glove.6B.50d/glove.6B.50d.aa", 20'000}, 0, EMBEDDING_DIM,
+                  embeddings, vocab);
 
     std::vector<Cluster> clusters;
-    auto clustering = AgglomerativeClustering(embeddings, EMBEDDING_DIM, VOCAB_SIZE, searchK);
+    auto clustering = AgglomerativeClustering(embeddings, EMBEDDING_DIM, VOCAB_SIZE, searchK, 0.95);
     clusters = clustering.agglomerativeClustering();
 
     // Sort clusters based on size
