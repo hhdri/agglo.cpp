@@ -1,10 +1,11 @@
 cmake_minimum_required(VERSION 3.27)
-project(untitled2)
+project(agglo.cpp)
 
 set(CMAKE_CXX_STANDARD 23)
 
-add_executable(untitled2 main2.cpp
-        AgglomerativeClustering.h)
+add_executable(agglo.cpp main2.cpp
+        AgglomerativeClustering.h
+)
 
 include_directories(/usr/local/include)
 
@@ -13,17 +14,17 @@ include_directories(/usr/local/include)
 # Find and link OpenMP
 find_package(OpenMP REQUIRED)
 if(OpenMP_CXX_FOUND)
-    target_link_libraries(untitled2 PUBLIC OpenMP::OpenMP_CXX)
+    target_link_libraries(agglo.cpp PUBLIC OpenMP::OpenMP_CXX)
 endif()
 
 # Find and link BLAS
 find_package(BLAS REQUIRED)
 if(BLAS_FOUND)
-    target_link_libraries(untitled2 PUBLIC ${BLAS_LIBRARIES})
+    target_link_libraries(agglo.cpp PUBLIC ${BLAS_LIBRARIES})
 endif()
 
 # Find Faiss library
 find_library(FAISS_LIBRARY REQUIRED)
 if(FAISS_LIBRARY)
-    target_link_libraries(untitled2 PUBLIC ${FAISS_LIBRARY})
+    target_link_libraries(agglo.cpp PUBLIC ${FAISS_LIBRARY})
 endif()

@@ -1,9 +1,5 @@
-//
-// Created by Majid Hajiheidari on 12/27/23.
-//
-
-#ifndef UNTITLED2_AGGLOMERATIVECLUSTERING_H
-#define UNTITLED2_AGGLOMERATIVECLUSTERING_H
+#ifndef AGGLO_CPP_AGGLOMERATIVECLUSTERING_H
+#define AGGLO_CPP_AGGLOMERATIVECLUSTERING_H
 
 #include <unordered_set>
 #include <memory>
@@ -219,4 +215,4 @@ vector<Cluster> AgglomerativeClustering::runAlgorithm() {
 }
 
 
-#endif //UNTITLED2_AGGLOMERATIVECLUSTERING_H
+#endif //AGGLO_CPP_AGGLOMERATIVECLUSTERING_H
