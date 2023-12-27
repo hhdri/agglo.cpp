@@ -3,7 +3,7 @@ project(agglo.cpp)
 
 set(CMAKE_CXX_STANDARD 23)
 
-add_executable(agglo.cpp main2.cpp
+add_executable(agglo.cpp main.cpp
         AgglomerativeClustering.h
 )
 
