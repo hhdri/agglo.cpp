@@ -43,8 +43,8 @@ void loadPartition(const Partition &partition, int offset, int embeddingDim, flo
 int main() {
     const int EMBEDDING_DIM = 50;
     const int VOCAB_SIZE = 20'000;
-    static float embeddings[VOCAB_SIZE * EMBEDDING_DIM];
-    static string vocab[VOCAB_SIZE];
+    auto *embeddings = new float[VOCAB_SIZE * EMBEDDING_DIM];
+    auto *vocab = new string[VOCAB_SIZE];
     const int searchK = 10;
 
     loadPartition({"/Users/majid/Downloads/glove.6B/glove.6B.50d/glove.6B.50d.aa", 20'000}, 0, EMBEDDING_DIM,
@@ -68,6 +68,10 @@ int main() {
         }
         clusterObjects.push_back(objects);
     }
+
+
+    delete[] embeddings;
+    delete[] vocab;
 
     cout << "Done" << endl;
 }
