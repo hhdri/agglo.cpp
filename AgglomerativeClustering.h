@@ -6,13 +6,31 @@
 #define UNTITLED2_AGGLOMERATIVECLUSTERING_H
 
 #include <unordered_set>
+#include <memory>
 
-template<int embeddingDim>
 class Cluster {
 public:
-    float embedding[embeddingDim];
+    std::unique_ptr<float[]> embedding;
     std::unordered_set<int> objects;
-    Cluster(std::unordered_set<int> objects, const float *embeddings);
+
+    Cluster(std::unordered_set<int> objects, const float *embeddings, int embeddingDim);
+
+    // Move constructor
+    Cluster(Cluster&& other) noexcept
+            : objects(std::move(other.objects)), embedding(std::move(other.embedding)) {}
+
+    // Move assignment operator
+    Cluster& operator=(Cluster&& other) noexcept {
+        if (this != &other) {
+            objects = std::move(other.objects);
+            embedding = std::move(other.embedding);
+        }
+        return *this;
+    }
+
+    // Delete copy constructor and copy assignment operator
+    Cluster(const Cluster&) = delete;
+    Cluster& operator=(const Cluster&) = delete;
 };
 
 class ClusterPair {
@@ -22,13 +40,12 @@ public:
     double similarity;
 };
 
-template<int embeddingDim>
-Cluster<embeddingDim>::Cluster(std::unordered_set<int> objects, const float *embeddings) : objects(std::move(objects)) {
-    auto clusterSize = (float) this->objects.size();
-    for (float &i: embedding) {
-        i = 0.0;
-    }
-    for (int object: this->objects) {
+Cluster::Cluster(std::unordered_set<int> objects, const float *embeddings, int embeddingDim)
+        : objects(std::move(objects)), embedding(std::make_unique<float[]>(embeddingDim)) {
+    auto clusterSize = static_cast<float>(this->objects.size());
+    std::fill_n(embedding.get(), embeddingDim, 0.0f);
+
+    for (int object : this->objects) {
         for (int i = 0; i < embeddingDim; i++) {
             embedding[i] += embeddings[object * embeddingDim + i] / clusterSize;
         }

@@ -70,16 +70,19 @@ void buildClusterPairs(unsigned long numClusters, int searchK, const float *sear
 }
 
 void
-buildClusterEmbeddings(const std::vector<Cluster<EMBEDDING_DIM>> *clusters, float *clusterEmbeddings) {
+buildClusterEmbeddings(const std::vector<Cluster> *clusters, float *clusterEmbeddings) {
     auto numClusters = clusters->size();
     for (int i = 0; i < numClusters; i++) {
-        std::copy(clusters->at(i).embedding, clusters->at(i).embedding + EMBEDDING_DIM,
-                  clusterEmbeddings + i * EMBEDDING_DIM);
+        std::copy(
+                clusters->at(i).embedding.get(),
+                clusters->at(i).embedding.get() + EMBEDDING_DIM,
+                clusterEmbeddings + i * EMBEDDING_DIM
+        );
     }
 }
 
-void populateNewClusters(const std::vector<ClusterPair> &clusterPairs, const std::vector<Cluster<EMBEDDING_DIM>> *clusters,
-                         std::vector<Cluster<EMBEDDING_DIM>> *newClusters) {
+void populateNewClusters(const std::vector<ClusterPair> &clusterPairs, const std::vector<Cluster> *clusters,
+                         std::vector<Cluster> *newClusters) {
     auto numClusters = clusters->size();
     std::vector<bool> isClusterUsed(numClusters, false);
 
@@ -95,13 +98,13 @@ void populateNewClusters(const std::vector<ClusterPair> &clusterPairs, const std
                        clusters->at(clusterPair.cluster1Id).objects.end());
         objects.insert(clusters->at(clusterPair.cluster2Id).objects.begin(),
                        clusters->at(clusterPair.cluster2Id).objects.end());
-        newClusters->emplace_back(objects, embeddings);
+        newClusters->emplace_back(objects, embeddings, EMBEDDING_DIM);
         numMerged++;
     }
     int numNotMerged = 0;
     for (int i = 0; i < numClusters; i++) {
         if (!isClusterUsed[i]) {
-            newClusters->emplace_back(clusters->at(i).objects, embeddings);
+            newClusters->emplace_back(clusters->at(i).objects, embeddings, EMBEDDING_DIM);
             numNotMerged++;
         }
     }
@@ -110,7 +113,7 @@ void populateNewClusters(const std::vector<ClusterPair> &clusterPairs, const std
          << endl;
 }
 
-void mergeClusters(std::vector<Cluster<EMBEDDING_DIM>> *clusters, std::vector<Cluster<EMBEDDING_DIM>> *newClusters, int searchK) {
+void mergeClusters(std::vector<Cluster> *clusters, std::vector<Cluster> *newClusters, int searchK) {
     unsigned long num_clusters = clusters->size();
     auto *clusterEmbeddings = new float[num_clusters * EMBEDDING_DIM];
     buildClusterEmbeddings(clusters, clusterEmbeddings);
@@ -130,16 +133,16 @@ void mergeClusters(std::vector<Cluster<EMBEDDING_DIM>> *clusters, std::vector<Cl
     populateNewClusters(clusterPairs, clusters, newClusters);
 }
 
-void buildSingletonClusters(std::vector<Cluster<EMBEDDING_DIM>> *clusters) {
+void buildSingletonClusters(std::vector<Cluster> *clusters) {
     for (int i = 0; i < VOCAB_SIZE; i++) {
         std::unordered_set<int> objects;
         objects.insert(i);
-        clusters->emplace_back(objects, embeddings);
+        clusters->emplace_back(objects, embeddings, EMBEDDING_DIM);
     }
 }
 
-void agglomerativeClustering(int searchK, std::vector<Cluster<EMBEDDING_DIM>> *returnClusters) {
-    std::vector<Cluster<EMBEDDING_DIM>> clusters, newClusters;
+void agglomerativeClustering(int searchK, std::vector<Cluster> *returnClusters) {
+    std::vector<Cluster> clusters, newClusters;
     buildSingletonClusters(&clusters);
 
     for (int i = 0;; i++) {
@@ -148,10 +151,10 @@ void agglomerativeClustering(int searchK, std::vector<Cluster<EMBEDDING_DIM>> *r
         if (newClusters.size() == clusters.size()) {
             break;
         }
-        clusters = newClusters;
+        clusters = std::move(newClusters);
         newClusters.clear();
     }
-    *returnClusters = clusters;
+    *returnClusters = std::move(clusters);
 }
 
 int main() {
@@ -159,16 +162,16 @@ int main() {
 
     loadPartition({"/Users/majid/Downloads/glove.6B/glove.6B.50d/glove.6B.50d.aa", 20'000}, 0);
 
-    std::vector<Cluster<EMBEDDING_DIM>> clusters;
+    std::vector<Cluster> clusters;
     agglomerativeClustering(searchK, &clusters);
 
     // Sort clusters based on size
     std::sort(clusters.begin(), clusters.end(),
-              [](const Cluster<EMBEDDING_DIM> &a, const Cluster<EMBEDDING_DIM> &b) { return a.objects.size() > b.objects.size(); });
+              [](const Cluster &a, const Cluster &b) { return a.objects.size() > b.objects.size(); });
 
     std::vector<std::vector<string>> clusterObjects;
 
-    for (const Cluster<EMBEDDING_DIM> &cluster: clusters) {
+    for (const Cluster &cluster: clusters) {
         std::vector<string> objects;
         objects.reserve(cluster.objects.size());
         for (int object: cluster.objects) {
