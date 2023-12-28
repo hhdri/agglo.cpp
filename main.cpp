@@ -4,6 +4,7 @@
 #include <chrono>
 #include <unordered_set>
 #include <algorithm>
+#include <cmath>
 
 #include <faiss/IndexFlat.h>
 
