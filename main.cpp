@@ -42,13 +42,14 @@ void loadPartition(const Partition &partition, int offset, int embeddingDim, flo
 }
 
 int main() {
-    const int EMBEDDING_DIM = 50;
-    const int VOCAB_SIZE = 50'000;
+    const int EMBEDDING_DIM = 100;
+    const int VOCAB_SIZE = 40'000;
     auto *embeddings = new float[VOCAB_SIZE * EMBEDDING_DIM];
     auto *vocab = new string[VOCAB_SIZE];
     const int searchK = 20;
 
-    loadPartition({"/Users/majid/Downloads/glove.6B/glove.6B.50d/glove.6B.50d.aa", VOCAB_SIZE}, 0, EMBEDDING_DIM,
+    //loadPartition({"/home/majid/agglo/glove/glove.6B.100d.txt", VOCAB_SIZE}, 0, EMBEDDING_DIM,
+    loadPartition({"glove.txt", VOCAB_SIZE}, 0, EMBEDDING_DIM,
                   embeddings, vocab);
 
     std::vector<Cluster> clusters;
