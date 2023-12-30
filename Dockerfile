@@ -27,6 +27,6 @@ RUN mkdir agglo.cpp/build && \
     make -C agglo.cpp/build
 
 # Add glove text file
-ADD glove/glove.6B.100d.txt glove.txt
+ADD glove.6B.100d.txt glove.txt
 
 ENTRYPOINT ["/app/agglo.cpp/build/agglo.cpp"]
