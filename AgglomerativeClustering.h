@@ -10,12 +10,13 @@ class Cluster {
 public:
     std::unique_ptr<float[]> embedding;
     std::unordered_set<int> objects;
+    bool mergable;
 
-    Cluster(std::unordered_set<int> objects, const float *embeddings, int embeddingDim);
+    Cluster(std::unordered_set<int> objects, const float *embeddings, int embeddingDim, bool mergable);
 
     // Move constructor
     Cluster(Cluster &&other) noexcept
-            : objects(std::move(other.objects)), embedding(std::move(other.embedding)) {}
+            : objects(std::move(other.objects)), embedding(std::move(other.embedding)), mergable(other.mergable) {}
 
     // Move assignment operator
     Cluster &operator=(Cluster &&other) noexcept {
@@ -37,6 +38,12 @@ public:
     int cluster1Id;
     int cluster2Id;
     double similarity;
+};
+
+struct SubsetEmbeddings {
+    int subsetSize;
+    vector<int> subsetIndices;
+    vector<float> embeddings;
 };
 
 class AgglomerativeClustering {
@@ -68,11 +75,11 @@ private:
         }
     };
 
-    FaissSearchResult searchFaiss(int size, vector<float> clusterEmbeddings) const;
+    FaissSearchResult searchFaiss(const SubsetEmbeddings& subsetEmbeddings) const;
 
-    vector<ClusterPair> buildClusterPairs(unsigned long numClusters, const FaissSearchResult *searchResult) const;
+    vector<ClusterPair> buildClusterPairs(SubsetEmbeddings& subsetEmbeddings, const FaissSearchResult *searchResult) const;
 
-    vector<float> buildClusterEmbeddings(const vector<Cluster> *clusters) const;
+    SubsetEmbeddings buildClusterEmbeddings(const vector<Cluster> *clusters) const;
 
     vector<Cluster> buildNewClusters(const vector<ClusterPair> &clusterPairs, const vector<Cluster> *clusters);
 
@@ -82,8 +89,8 @@ private:
 
 };
 
-Cluster::Cluster(std::unordered_set<int> objects, const float *embeddings, int embeddingDim)
-        : objects(std::move(objects)), embedding(std::make_unique<float[]>(embeddingDim)) {
+Cluster::Cluster(std::unordered_set<int> objects, const float *embeddings, int embeddingDim, bool mergable)
+        : objects(std::move(objects)), embedding(std::make_unique<float[]>(embeddingDim)), mergable(mergable) {
     auto clusterSize = static_cast<float>(this->objects.size());
     std::fill_n(embedding.get(), embeddingDim, 0.0f);
 
@@ -99,20 +106,20 @@ AgglomerativeClustering::AgglomerativeClustering(float *embeddings, int embeddin
         : embeddings(embeddings), embeddingDim(embeddingDim), vocabSize(vocabSize), searchK(searchK),
           threshold(threshold) {}
 
-AgglomerativeClustering::FaissSearchResult AgglomerativeClustering::searchFaiss(int size, vector<float> clusterEmbeddings) const {
-    AgglomerativeClustering::FaissSearchResult result(size, searchK);
+AgglomerativeClustering::FaissSearchResult AgglomerativeClustering::searchFaiss(const SubsetEmbeddings& subsetEmbeddings) const {
+    AgglomerativeClustering::FaissSearchResult result(subsetEmbeddings.subsetSize, searchK);
     faiss::IndexFlatIP index(embeddingDim);
-    index.add(size, clusterEmbeddings.data());
-    index.search(size, clusterEmbeddings.data(), searchK, result.distances, result.indices);
+    index.add(subsetEmbeddings.subsetSize, subsetEmbeddings.embeddings.data());
+    index.search(subsetEmbeddings.subsetSize, subsetEmbeddings.embeddings.data(), searchK, result.distances, result.indices);
     return result;
 }
 
-vector<ClusterPair> AgglomerativeClustering::buildClusterPairs(unsigned long numClusters, const AgglomerativeClustering::FaissSearchResult *searchResult) const {
+vector<ClusterPair> AgglomerativeClustering::buildClusterPairs(SubsetEmbeddings& subsetEmbeddings, const AgglomerativeClustering::FaissSearchResult *searchResult) const {
     vector<ClusterPair> clusterPairs;
-    for (int i = 0; i < numClusters; i++) {
+    for (int i = 0; i < subsetEmbeddings.subsetSize; i++) {
         for (int j = 0; j < searchK; j++) {
-            int cluster1Id = i;
-            int cluster2Id = (int) searchResult->indices[i * searchK + j];
+            int cluster1Id = subsetEmbeddings.subsetIndices[i];
+            int cluster2Id = subsetEmbeddings.subsetIndices[(int) searchResult->indices[i * searchK + j]];
             float similarity = searchResult->distances[i * searchK + j];
             if (cluster1Id < cluster2Id & similarity > threshold) {
                 clusterPairs.emplace_back(
@@ -126,11 +133,22 @@ vector<ClusterPair> AgglomerativeClustering::buildClusterPairs(unsigned long num
     return clusterPairs;
 }
 
-vector<float> AgglomerativeClustering::buildClusterEmbeddings(const vector<Cluster> *clusters) const {
+SubsetEmbeddings AgglomerativeClustering::buildClusterEmbeddings(const vector<Cluster> *clusters) const {
     size_t numClusters = clusters->size();
-    vector<float> clusterEmbeddings(numClusters * embeddingDim);
+    vector<float> clusterEmbeddings;
+    vector<int> subsetIndices;
 
+    clusterEmbeddings.reserve(clusters->size() * embeddingDim);
+    subsetIndices.reserve(clusters->size());
+
+    int numMergableClusters = 0;
     for (int i = 0; i < numClusters; i++) {
+        if (!clusters->at(i).mergable) {
+            continue;
+        }
+        numMergableClusters++;
+        subsetIndices.push_back(i);
+        clusterEmbeddings.resize(numMergableClusters * embeddingDim);
         std::copy(
                 clusters->at(i).embedding.get(),
                 clusters->at(i).embedding.get() + embeddingDim,
@@ -138,7 +156,7 @@ vector<float> AgglomerativeClustering::buildClusterEmbeddings(const vector<Clust
         );
     }
 
-    return clusterEmbeddings;
+    return {numMergableClusters, subsetIndices, clusterEmbeddings};
 }
 
 
@@ -147,9 +165,12 @@ vector<Cluster> AgglomerativeClustering::buildNewClusters(const vector<ClusterPa
     auto newClusters = vector<Cluster>();
     auto numClusters = clusters->size();
     vector<bool> isClusterUsed(numClusters, false);
+    vector<bool> isClusterMergable(numClusters, false);
 
     int numMerged = 0;
     for (const ClusterPair &clusterPair: clusterPairs) {
+        isClusterMergable[clusterPair.cluster1Id] = true;
+        isClusterMergable[clusterPair.cluster2Id] = true;
         if (isClusterUsed[clusterPair.cluster1Id] || isClusterUsed[clusterPair.cluster2Id]) {
             continue;
         }
@@ -160,18 +181,19 @@ vector<Cluster> AgglomerativeClustering::buildNewClusters(const vector<ClusterPa
                        clusters->at(clusterPair.cluster1Id).objects.end());
         objects.insert(clusters->at(clusterPair.cluster2Id).objects.begin(),
                        clusters->at(clusterPair.cluster2Id).objects.end());
-        newClusters.emplace_back(objects, embeddings, embeddingDim);
+        newClusters.emplace_back(objects, embeddings, embeddingDim, true);
         numMerged++;
     }
-    int numNotMerged = 0;
+    int numNotMerged = 0, numNonMergable = 0;
     for (int i = 0; i < numClusters; i++) {
         if (!isClusterUsed[i]) {
-            newClusters.emplace_back(clusters->at(i).objects, embeddings, embeddingDim);
+            newClusters.emplace_back(clusters->at(i).objects, embeddings, embeddingDim, isClusterMergable[i]);
+            numNonMergable += !isClusterMergable[i];
             numNotMerged++;
         }
     }
     std::cout << "Num clusters: " << newClusters.size() << " (" << numMerged << " merged, " << numNotMerged
-              << " not merged)"
+              << " not merged, " << numNonMergable << " non mergable)"
               << std::endl;
     return newClusters;
 }
@@ -180,9 +202,9 @@ vector<Cluster> AgglomerativeClustering::mergeClusters(vector<Cluster> *clusters
     auto num_clusters = clusters->size();
     auto clusterEmbeddings = buildClusterEmbeddings(clusters);
 
-    auto faissSearchResult = searchFaiss((int) num_clusters, clusterEmbeddings);
+    auto faissSearchResult = searchFaiss(clusterEmbeddings);
 
-    auto clusterPairs = buildClusterPairs(num_clusters, &faissSearchResult);
+    auto clusterPairs = buildClusterPairs(clusterEmbeddings, &faissSearchResult);
 
     auto newClusters = buildNewClusters(clusterPairs, clusters);
 
@@ -194,7 +216,7 @@ vector<Cluster> AgglomerativeClustering::getSingletonClusters() {
     for (int i = 0; i < vocabSize; i++) {
         std::unordered_set<int> objects;
         objects.insert(i);
-        clusters.emplace_back(objects, embeddings, embeddingDim);
+        clusters.emplace_back(objects, embeddings, embeddingDim, true);
     }
     return clusters;
 }

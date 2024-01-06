@@ -1,10 +1,10 @@
+#include <cmath>
 #include <iostream>
 #include <fstream>
 #include <sstream>
 #include <chrono>
 #include <unordered_set>
 #include <algorithm>
-#include <cmath>
 
 #include <faiss/IndexFlat.h>
 
@@ -33,7 +33,7 @@ void loadPartition(const Partition &partition, int offset, int embeddingDim, flo
             embeddings[i * embeddingDim + j] = value;
             normSquared += value * value;
         }
-        float norm = sqrt(normSquared);
+        auto norm = std::sqrt(normSquared);
         for (int j = 0; j < embeddingDim; j++) {
             embeddings[i * embeddingDim + j] /= norm;
         }
@@ -41,15 +41,14 @@ void loadPartition(const Partition &partition, int offset, int embeddingDim, flo
     file.close();
 }
 
-int main() {
+int main(int argc, char* argv[]) {
     const int EMBEDDING_DIM = 100;
-    const int VOCAB_SIZE = 40'000;
+    const int VOCAB_SIZE = 400'000;
     auto *embeddings = new float[VOCAB_SIZE * EMBEDDING_DIM];
     auto *vocab = new string[VOCAB_SIZE];
     const int searchK = 20;
 
-    //loadPartition({"/home/majid/agglo/glove/glove.6B.100d.txt", VOCAB_SIZE}, 0, EMBEDDING_DIM,
-    loadPartition({"glove.txt", VOCAB_SIZE}, 0, EMBEDDING_DIM,
+    loadPartition({argv[1], VOCAB_SIZE}, 0, EMBEDDING_DIM,
                   embeddings, vocab);
 
     std::vector<Cluster> clusters;
