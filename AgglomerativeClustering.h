@@ -75,9 +75,10 @@ private:
         }
     };
 
-    FaissSearchResult searchFaiss(const SubsetEmbeddings& subsetEmbeddings) const;
+    FaissSearchResult searchFaiss(const SubsetEmbeddings &subsetEmbeddings) const;
 
-    vector<ClusterPair> buildClusterPairs(SubsetEmbeddings& subsetEmbeddings, const FaissSearchResult *searchResult) const;
+    vector<ClusterPair>
+    buildClusterPairs(SubsetEmbeddings &subsetEmbeddings, const FaissSearchResult *searchResult) const;
 
     SubsetEmbeddings buildClusterEmbeddings(const vector<Cluster> *clusters) const;
 
@@ -106,22 +107,25 @@ AgglomerativeClustering::AgglomerativeClustering(float *embeddings, int embeddin
         : embeddings(embeddings), embeddingDim(embeddingDim), vocabSize(vocabSize), searchK(searchK),
           threshold(threshold) {}
 
-AgglomerativeClustering::FaissSearchResult AgglomerativeClustering::searchFaiss(const SubsetEmbeddings& subsetEmbeddings) const {
+AgglomerativeClustering::FaissSearchResult
+AgglomerativeClustering::searchFaiss(const SubsetEmbeddings &subsetEmbeddings) const {
     AgglomerativeClustering::FaissSearchResult result(subsetEmbeddings.subsetSize, searchK);
     faiss::IndexFlatIP index(embeddingDim);
     index.add(subsetEmbeddings.subsetSize, subsetEmbeddings.embeddings.data());
-    index.search(subsetEmbeddings.subsetSize, subsetEmbeddings.embeddings.data(), searchK, result.distances, result.indices);
+    index.search(subsetEmbeddings.subsetSize, subsetEmbeddings.embeddings.data(), searchK, result.distances,
+                 result.indices);
     return result;
 }
 
-vector<ClusterPair> AgglomerativeClustering::buildClusterPairs(SubsetEmbeddings& subsetEmbeddings, const AgglomerativeClustering::FaissSearchResult *searchResult) const {
+vector<ClusterPair> AgglomerativeClustering::buildClusterPairs(SubsetEmbeddings &subsetEmbeddings,
+                                                               const AgglomerativeClustering::FaissSearchResult *searchResult) const {
     vector<ClusterPair> clusterPairs;
     for (int i = 0; i < subsetEmbeddings.subsetSize; i++) {
         for (int j = 0; j < searchK; j++) {
             int cluster1Id = subsetEmbeddings.subsetIndices[i];
             int cluster2Id = subsetEmbeddings.subsetIndices[(int) searchResult->indices[i * searchK + j]];
             float similarity = searchResult->distances[i * searchK + j];
-            if (cluster1Id < cluster2Id & similarity > threshold) {
+            if (cluster1Id != cluster2Id & similarity > threshold) {
                 clusterPairs.emplace_back(
                         ClusterPair{cluster1Id, cluster2Id, similarity});
             }
@@ -135,25 +139,25 @@ vector<ClusterPair> AgglomerativeClustering::buildClusterPairs(SubsetEmbeddings&
 
 SubsetEmbeddings AgglomerativeClustering::buildClusterEmbeddings(const vector<Cluster> *clusters) const {
     size_t numClusters = clusters->size();
-    vector<float> clusterEmbeddings;
-    vector<int> subsetIndices;
-
-    clusterEmbeddings.reserve(clusters->size() * embeddingDim);
-    subsetIndices.reserve(clusters->size());
 
     int numMergableClusters = 0;
+    for (int i = 0; i < numClusters; i++)
+        numMergableClusters += clusters->at(i).mergable;
+
+    vector<float> clusterEmbeddings(numMergableClusters * embeddingDim);
+    vector<int> subsetIndices(numMergableClusters);
+
+    numMergableClusters = 0;
     for (int i = 0; i < numClusters; i++) {
-        if (!clusters->at(i).mergable) {
+        if (!clusters->at(i).mergable)
             continue;
-        }
-        numMergableClusters++;
-        subsetIndices.push_back(i);
-        clusterEmbeddings.resize(numMergableClusters * embeddingDim);
+        subsetIndices[numMergableClusters] = i;
         std::copy(
                 clusters->at(i).embedding.get(),
                 clusters->at(i).embedding.get() + embeddingDim,
-                clusterEmbeddings.begin() + i * embeddingDim
+                clusterEmbeddings.begin() + numMergableClusters * embeddingDim
         );
+        numMergableClusters++;
     }
 
     return {numMergableClusters, subsetIndices, clusterEmbeddings};
@@ -199,7 +203,6 @@ vector<Cluster> AgglomerativeClustering::buildNewClusters(const vector<ClusterPa
 }
 
 vector<Cluster> AgglomerativeClustering::mergeClusters(vector<Cluster> *clusters) {
-    auto num_clusters = clusters->size();
     auto clusterEmbeddings = buildClusterEmbeddings(clusters);
 
     auto faissSearchResult = searchFaiss(clusterEmbeddings);
