@@ -50,36 +50,26 @@ int main() {
 
     std::vector<std::optional<SimilarityPair>> topSims(VOCAB_SIZE);
 
-    float negDotProduct;
-    std::optional<SimilarityPair> topPair;
+    std::vector<float> rowSims(VOCAB_SIZE);
     for (int i = 0; i < VOCAB_SIZE; i++) {
-        topPair = std::nullopt;
-        for (int j = 0; j < VOCAB_SIZE; j++) {
-            auto negDotProduct = -std::inner_product(
-                embeddings + i * EMBEDDING_DIM,
-                embeddings + (i + 1) * EMBEDDING_DIM,
-                embeddings + j * EMBEDDING_DIM,
-                0.0f
-            );
-            if (i != j && (!topPair.has_value() || negDotProduct < topPair->first)) 
-                topPair = SimilarityPair(negDotProduct, IndexPair(std::min(i, j), std::max(i, j)));
-        }
-        if (!topSims[i].has_value() || topPair < topSims[i])
-            topSims[i] = topPair;
+        auto first1 = embeddings + i * EMBEDDING_DIM;
+        auto last1 = first1 + EMBEDDING_DIM;
+        for (int j = 0; j < VOCAB_SIZE; j++)
+            rowSims[j] = -std::inner_product(first1, last1, embeddings + j * EMBEDDING_DIM, 0.0f);
+        rowSims[i] = std::numeric_limits<float>::max(); // Ignore self-similarity
+        auto minIt = std::min_element(rowSims.begin(), rowSims.end());
+        int minIdx = std::distance(rowSims.begin(), minIt);
+        topSims[i] = SimilarityPair(*minIt, IndexPair(std::min(i, minIdx), std::max(i, minIdx))); // TODO: Is this needed?
     }
     for(int idx1 = 0; idx1 < VOCAB_SIZE; idx1++) {
-        if (!topSims[idx1].has_value()) {
-            continue;
-        }
+        if (!topSims[idx1].has_value()) continue;
         auto &pair1 = topSims[idx1].value();
 
         auto idx2 = pair1.second.first;
         if (idx2 == idx1) {
             idx2 = pair1.second.second;
         }
-        if (!topSims[idx2].has_value()) {
-            continue;
-        }
+        if (!topSims[idx2].has_value()) continue;
         auto &pair2 = topSims[idx2].value();
 
         auto is_equal = pair1.first == pair2.first && 
