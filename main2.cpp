@@ -69,9 +69,7 @@ int main() {
         if (!topSims[idx2].has_value()) continue;
         auto &[sim2, pair2] = topSims[idx2].value();
 
-        auto is_equal = sim1 == sim2 && 
-                        pair1.first == pair2.first && 
-                        pair1.second == pair2.second;
+        auto is_equal = sim1 == sim2 && pair1 == pair2;
 
         if (!is_equal) {
             cout << "Comparing: " << SimilarityPairString(topSims[idx1]) 
