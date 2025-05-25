@@ -63,25 +63,24 @@ int main() {
     }
     for(int idx1 = 0; idx1 < VOCAB_SIZE; idx1++) {
         if (!topSims[idx1].has_value()) continue;
-        auto &pair1 = topSims[idx1].value();
+        auto &[sim1, pair1] = topSims[idx1].value();
 
-        auto idx2 = pair1.second.first;
-        if (idx2 == idx1) {
-            idx2 = pair1.second.second;
-        }
+        auto idx2 = pair1.first;
+        if (idx2 == idx1) idx2 = pair1.second;
+
         if (!topSims[idx2].has_value()) continue;
-        auto &pair2 = topSims[idx2].value();
+        auto &[sim2, pair2] = topSims[idx2].value();
 
-        auto is_equal = pair1.first == pair2.first && 
-                        pair1.second.first == pair2.second.first && 
-                        pair1.second.second == pair2.second.second;
+        auto is_equal = sim1 == sim2 && 
+                        pair1.first == pair2.first && 
+                        pair1.second == pair2.second;
 
         if (!is_equal) {
             cout << "Comparing: " << SimilarityPairString(topSims[idx1]) 
                  << " with " << SimilarityPairString(topSims[idx2]) << endl;
         }
         
-        if (is_equal || pair1.first <= pair2.first) {
+        if (is_equal || sim1 <= sim2) {
             topSims[idx2] = std::nullopt;
         } else {
             topSims[idx1] = std::nullopt;
