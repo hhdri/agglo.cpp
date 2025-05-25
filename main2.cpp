@@ -16,9 +16,7 @@ float *embeddings;
 std::string *vocab;
 
 std::string SimilarityPairString(const std::optional<SimilarityPair> &pair) {
-    if (!pair.has_value()) {
-        return "No similarity pair";
-    }
+    if (!pair.has_value()) return "No similarity pair";
     return std::to_string(pair.value().first) + " (" + vocab[pair.value().second.first] + ", " + vocab[pair.value().second.second] + ")";
 }
 
@@ -59,7 +57,7 @@ int main() {
         rowSims[i] = std::numeric_limits<float>::max(); // Ignore self-similarity
         auto minIt = std::min_element(rowSims.begin(), rowSims.end());
         int minIdx = std::distance(rowSims.begin(), minIt);
-        topSims[i] = SimilarityPair(*minIt, IndexPair(std::min(i, minIdx), std::max(i, minIdx))); // TODO: Is this needed?
+        topSims[i] = SimilarityPair(*minIt, IndexPair(std::min(i, minIdx), std::max(i, minIdx)));
     }
     for(int idx1 = 0; idx1 < VOCAB_SIZE; idx1++) {
         if (!topSims[idx1].has_value()) continue;
@@ -87,8 +85,7 @@ int main() {
         }
     }
     int count = 0;
-    for(int i = 0; i < VOCAB_SIZE; i++) {
-        if (topSims[i].has_value()) count++;
-    }
+    for(auto &topSim : topSims)
+        if (topSim.has_value()) count++;
     cout << "Total words with most similar: " << count << endl;
 }
