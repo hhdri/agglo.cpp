@@ -49,13 +49,26 @@ fn load_glove(path: &str) -> Result<(Vec<String>, Vec<f32>), Box<dyn Error>> {
     Ok((vocab, embeddings))
 }
 
+#[derive(Debug, PartialEq)]
+struct PairSim {
+    left: usize,
+    right: usize,
+    sim: f32
+}
+
+impl PairSim {
+    fn new(left: usize, right: usize, sim: f32) -> PairSim {
+        Self { left:std::cmp::min(left, right), right:std::cmp::max(left, right), sim }
+    }
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
-    let (vocab, embeddings) = load_glove("../glove.6B.50d.txt")?;
+    let (vocab, embeddings) = load_glove("./glove.6B.50d.txt")?;
     println!("Loaded {} words ({} floats)", vocab.len(), embeddings.len());
     println!("Word: {}, first: {},  last: {}", vocab[19], embeddings[19 * EMBEDDING_DIM], embeddings[19 * EMBEDDING_DIM + 49]);
 
     let mut row_dot_prods: Vec<f32> =  vec![0.0; VOCAB_SIZE];
-    let mut most_sims = Vec::<(usize, f32)>::new();
+    let mut most_sims = Vec::<Option<PairSim>>::new();
     for i in 0..VOCAB_SIZE {
         for j in 0..VOCAB_SIZE {
             let mut dot = 0.0;
@@ -70,10 +83,34 @@ fn main() -> Result<(), Box<dyn Error>> {
             .enumerate()
             .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
             .unwrap();
-        most_sims.push((row_argmax_sim, row_max_sim));
+        most_sims.push(Some(PairSim::new(i, row_argmax_sim, row_max_sim)));  // TODO: change this push to index assignment for multithreading to work
     }
-    for i in 500..600 {
-        println!("Word: {}, most sim: {}, word: {}", vocab[i], most_sims[i].1, vocab[most_sims[i].0]);
+
+    fn format_pair_sim(pair_sim: &PairSim, vocab: &Vec<String>) -> String{
+        let result = format!("left: {:<15} right: {:<15} sim:{:>9.6}",  vocab[pair_sim.left], vocab[pair_sim.right], pair_sim.sim);
+        result
+    }
+
+    for idx1 in 0..VOCAB_SIZE {
+        let pair_sim1 = match &most_sims[idx1] {
+            Some(pair_sim) => pair_sim,
+            None => continue
+        };
+        let idx2= if pair_sim1.left != idx1 { pair_sim1.left } else { pair_sim1.right };
+        let pair_sim2 = match &most_sims[idx2] {
+            Some(pair_sim) => pair_sim,
+            None => continue
+        };
+
+        if pair_sim1 != pair_sim2 {
+            println!("{} {}", format_pair_sim(pair_sim1, &vocab), format_pair_sim(pair_sim2, &vocab));
+        }
+
+        if pair_sim1 ==  pair_sim2 || pair_sim1.sim >= pair_sim2.sim {
+            most_sims[idx2] = None;
+        } else {
+            most_sims[idx1] = None;
+        }
     }
 
     Ok(())
