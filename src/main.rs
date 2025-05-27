@@ -81,7 +81,7 @@ impl Ord for PairSim {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 enum BTree {
     Leaf(usize),
     Node(Box<(BTree, BTree)>)
@@ -92,7 +92,7 @@ fn format_b_tree(tree: &BTree, vocab: &Vec<String>) -> String {
         BTree::Leaf(x) => {vocab[*x].clone()}
         BTree::Node(pair) => {
             let (left, right) = &**pair;
-            format!("[{}, {}]",                     // recursion
+            format!("{{{}, {}}}",                     // recursion
                     format_b_tree(left,  vocab),
                     format_b_tree(right,  vocab))
         }
@@ -154,10 +154,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     new_nodes.extend(singleton_clusters.into_iter().flatten());
     println!("Number of untouched clusters: {}", new_nodes.len());
 
-    new_nodes.truncate(100);
+    // new_nodes.truncate(100);
     for new_node in new_nodes {
-        println!("{:?}", format_b_tree(&new_node, &vocab));
+        println!("{}", format_b_tree(&new_node, &vocab));
     }
+    
+    
 
     // for idx1 in 0..VOCAB_SIZE {
     //     let pair_sim1 = match &most_sims[idx1] {
