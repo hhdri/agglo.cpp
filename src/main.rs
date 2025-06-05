@@ -87,6 +87,23 @@ enum BTree {
     Node(Box<(BTree, BTree)>)
 }
 
+fn flatten_b_tree(tree: &BTree) -> Vec<usize> {
+    let mut result = Vec::new();
+    flatten_recursive(tree, &mut result);
+    result
+}
+
+// Internal recursive helper function
+fn flatten_recursive(tree: &BTree, result: &mut Vec<usize>) {
+    match tree {
+        BTree::Leaf(n) => result.push(*n),
+        BTree::Node(node) => {
+            flatten_recursive(&node.0, result);
+            flatten_recursive(&node.1, result);
+        }
+    }
+}
+
 fn format_b_tree(tree: &BTree, vocab: &Vec<String>) -> String {
     match tree {
         BTree::Leaf(x) => {vocab[*x].clone()}
@@ -99,17 +116,26 @@ fn format_b_tree(tree: &BTree, vocab: &Vec<String>) -> String {
     }
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
-    let (vocab, embeddings) = load_glove("./glove.6B.50d.txt")?;
-    println!("Loaded {} words ({} floats)", vocab.len(), embeddings.len());
-    println!("Word: {}, first: {},  last: {}", vocab[19], embeddings[19 * EMBEDDING_DIM], embeddings[19 * EMBEDDING_DIM + 49]);
+fn cluster_step(old_clusters: &Vec<BTree>, original_embeddings: &Vec<f32>) -> Vec<BTree> {
+    let n_old_clusters = old_clusters.len();
 
-    let mut singleton_clusters: Vec<Option<BTree>> = (0..VOCAB_SIZE).map(BTree::Leaf).map(Some).collect();
+    let old_clusters_flat = old_clusters.iter()
+        .map(flatten_b_tree);
 
-    let mut row_dot_prods: Vec<f32> =  vec![0.0; VOCAB_SIZE];
+    let mut embeddings = vec![0.0; EMBEDDING_DIM * old_clusters.len()];
+    for (idx, items) in old_clusters_flat.enumerate() {
+        let n_items_f32 = items.len() as f32;
+        for item in items {
+            for i in 0..EMBEDDING_DIM {
+                embeddings[idx * EMBEDDING_DIM + i] += original_embeddings[item * EMBEDDING_DIM + i] / n_items_f32;
+            }
+        }
+    }
+
+    let mut row_dot_prods =  vec![0.0; n_old_clusters];
     let mut most_sims = Vec::<PairSim>::new();
-    for i in 0..VOCAB_SIZE {
-        for j in 0..VOCAB_SIZE {
+    for i in 0..n_old_clusters {
+        for j in 0..n_old_clusters {
             let mut dot = 0.0;
             for k in 0..EMBEDDING_DIM {
                 dot += embeddings[i * EMBEDDING_DIM + k] * embeddings[j * EMBEDDING_DIM + k];
@@ -128,60 +154,43 @@ fn main() -> Result<(), Box<dyn Error>> {
     most_sims.sort_unstable();
     most_sims.dedup();
 
-    let mut cnt = 0;
-    for pair_sim in &most_sims {
-        println!("{}", format_pair_sim(&pair_sim, &vocab));
-        cnt += 1;
-        if cnt == 10 { break; }
-    }
-
-    let mut new_nodes = Vec::<BTree>::new();
+    let mut old_clusters_copy: Vec<Option<&BTree>> = old_clusters.into_iter().map(Some).collect();
+    let mut new_clusters = Vec::<BTree>::new();
 
     for pair_sim in &most_sims {
-        let leaf1 = match &singleton_clusters[pair_sim.left] {
+        let leaf1 = match old_clusters_copy[pair_sim.left] {
             Some(b) => b.clone(),
-            None => continue
+            None => continue,
         };
-        let leaf2 = match &singleton_clusters[pair_sim.right] {
+
+        let leaf2 = match old_clusters_copy[pair_sim.right] {
             Some(b) => b.clone(),
-            None => continue
+            None => continue,
         };
-        singleton_clusters[pair_sim.left] = None;
-        singleton_clusters[pair_sim.right] = None;
-        new_nodes.push(BTree::Node(Box::new((leaf1, leaf2))));
+        old_clusters_copy[pair_sim.left] = None;
+        old_clusters_copy[pair_sim.right] = None;
+        new_clusters.push(BTree::Node(Box::new((leaf1, leaf2))));
     }
-    println!("Number of merged clusters: {}", new_nodes.len());
-    new_nodes.extend(singleton_clusters.into_iter().flatten());
-    println!("Number of untouched clusters: {}", new_nodes.len());
+    new_clusters.extend(old_clusters_copy.into_iter().map(|x|x.cloned()).flatten());
+    
+    new_clusters
+}
 
-    // new_nodes.truncate(100);
-    for new_node in new_nodes {
-        println!("{}", format_b_tree(&new_node, &vocab));
+fn main() -> Result<(), Box<dyn Error>> {
+    let (vocab, embeddings) = load_glove("./glove.6B.50d.txt")?;
+
+    let singleton_clusters: Vec<BTree> = (0..VOCAB_SIZE).map(BTree::Leaf).collect();
+    println!("Starting clustering with {} singleton clusters", singleton_clusters.len());
+
+    let mut prev_clusters = singleton_clusters.clone();
+    for i in 0..27 {
+        println!("Clustering step {}", i + 1);
+        let new_clusters = cluster_step(&prev_clusters, &embeddings);
+        println!("New clusters: {}", new_clusters.len());
+        // for new_node in &new_clusters {
+        //     println!("{}", format_b_tree(new_node, &vocab));
+        // }
+        prev_clusters = new_clusters;
     }
-    
-    
-
-    // for idx1 in 0..VOCAB_SIZE {
-    //     let pair_sim1 = match &most_sims[idx1] {
-    //         Some(pair_sim) => pair_sim,
-    //         None => continue
-    //     };
-    //     let idx2= if pair_sim1.left != idx1 { pair_sim1.left } else { pair_sim1.right };
-    //     let pair_sim2 = match &most_sims[idx2] {
-    //         Some(pair_sim) => pair_sim,
-    //         None => continue
-    //     };
-    //
-    //     if pair_sim1 != pair_sim2 {
-    //         println!("{} {}", format_pair_sim(pair_sim1, &vocab), format_pair_sim(pair_sim2, &vocab));
-    //     }
-    //
-    //     if pair_sim1 ==  pair_sim2 || pair_sim1.sim >= pair_sim2.sim {
-    //         most_sims[idx2] = None;
-    //     } else {
-    //         most_sims[idx1] = None;
-    //     }
-    // }
-
     Ok(())
 }
