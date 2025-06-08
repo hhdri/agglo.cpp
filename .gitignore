@@ -1,6 +1,7 @@
 target/
 
 glove*.txt
+glove*.zip
 
 *.swp
 
