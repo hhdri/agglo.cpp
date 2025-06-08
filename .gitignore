@@ -1,35 +1,8 @@
-# Prerequisites
-*.d
+target/
 
-# Compiled Object files
-*.slo
-*.lo
-*.o
-*.obj
+glove*.txt
+glove*.zip
 
-# Precompiled Headers
-*.gch
-*.pch
+*.swp
 
-# Compiled Dynamic libraries
-*.so
-*.dylib
-*.dll
-
-# Fortran module files
-*.mod
-*.smod
-
-# Compiled Static libraries
-*.lai
-*.la
-*.a
-*.lib
-
-# Executables
-*.exe
-*.out
-*.app
-/cmake-build-debug/
-/build/
-/glove/
+.idea/
